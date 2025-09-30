@@ -1,142 +1,206 @@
-# generate_os_versions.py
-
 import requests
 from bs4 import BeautifulSoup
 import csv
-from datetime import datetime
+from datetime import date
+
+APPLE_REleases_URL = 'https://developer.apple.com/news/releases/'
 
 def parse_apple_releases():
-    url = 'https://developer.apple.com/news/releases/'
-    resp = requests.get(url)
+    """
+    Scrape the Apple Developer Releases page to collect version announcements and dates,
+    especially for iPadOS and macOS.
+    Returns:
+      apple_info: dict mapping version → { 'os_type': 'iPadOS'/'macOS', 'date': 'YYYY-MM-DD', 'is_beta': bool }
+    """
+    resp = requests.get(APPLE_REleases_URL)
+    resp.raise_for_status()
     soup = BeautifulSoup(resp.text, 'html.parser')
     articles = soup.find_all('article')
 
-    # containers for what we want
-    current = {
-        'iPadOS': None,
-        'macOS': None
-    }
-    upcoming = {
-        'iPadOS': None,
-        'macOS': None
-    }
-    dates = {}  # version → announcement date
+    apple_info = {}  # e.g. apple_info['26.1'] = {os_type: 'iPadOS', date: '2025-09-22', is_beta: True}
 
     for art in articles:
-        # Parse the date of the article
-        # The page often shows “September 22, 2025” above entries. We need to detect that.
-        date_el = art.find('time')
+        # Look for date / time tag
+        time_el = art.find('time')
         art_date = None
-        if date_el:
-            art_date = date_el.get_text().strip()
-        # Or fallback: look for a heading with date above series of items (you may need to inspect DOM)
+        if time_el:
+            art_date = time_el.get_text().strip()
+            # Optionally convert to YYYY-MM-DD format if it's in “Month Day, Year”
+            # (you can parse with datetime.strptime)
+            try:
+                dt = date.fromisoformat(art_date)
+                # if art_date was already YYYY-MM-DD, this works; else exception
+                art_date = dt.isoformat()
+            except Exception:
+                # fallback: parse “September 22, 2025” etc.
+                try:
+                    dt2 = date.strptime(art_date, "%B %d, %Y")
+                    art_date = dt2.isoformat()
+                except Exception:
+                    # leave art_date as original string
+                    pass
 
         heading = art.find('h2')
-        if heading:
-            title = heading.get_text().strip()
-            # Examples: "iPadOS 26.1 beta (23B5044l)"
-            if title.startswith('iPadOS'):
-                version = title.split()[1]  # e.g. "26.1"
-                # if we don't have an upcoming version yet, set it
-                if upcoming['iPadOS'] is None and 'beta' in title:
-                    upcoming['iPadOS'] = version
-                    dates[version] = art_date
-                # also track current if the version matches “26.x” and not beta
-                # (You might want logic to pick the latest non-beta in the list.)
-            if title.startswith('macOS'):
-                version = title.split()[1]
-                if upcoming['macOS'] is None and 'beta' in title:
-                    upcoming['macOS'] = version
-                    dates[version] = art_date
+        if not heading:
+            continue
+        title = heading.get_text().strip()
 
-    return current, upcoming, dates
+        # We expect titles like "iPadOS 26.1 beta (…)" or "macOS 26.1 beta (…)". Or maybe “iPadOS 26.0.1 (…)”
+        for os_type in ('iPadOS', 'macOS'):
+            if title.startswith(os_type):
+                parts = title.split()
+                if len(parts) >= 2:
+                    version = parts[1]
+                    is_beta = 'beta' in title or 'RC' in title or 'beta' in title.lower()
+                    # Only store if not stored or newer (you can refine logic)
+                    apple_info[version] = {
+                        'os_type': os_type,
+                        'date': art_date,
+                        'is_beta': is_beta,
+                        'title': title
+                    }
+                break
 
-def get_public_current_versions():
+    return apple_info
+
+def pick_current_and_upcoming(apple_info):
     """
-    This is more heuristic / manual. Scrape Apple’s public OS pages or map from known sources.
-    Returns something like:
-      {'iPadOS': '26.0.1', 'macOS': '26.0'}
+    From apple_info (dict), pick:
+      - current version (latest non-beta version)
+      - upcoming version (first beta after current)
+    Return:
+      { 'iPadOS': {current: ver, current_date: d, upcoming: ver2, upcoming_date: d2}, 
+        'macOS': { … } }
     """
-    # Example: check https://www.apple.com/au/os/ipados/
-    ipad_url = 'https://www.apple.com/au/os/ipados/'
-    resp = requests.get(ipad_url)
-    soup = BeautifulSoup(resp.text, 'html.parser')
-    # this likely yields "iPadOS 26" (no decimal) — so you may need a fallback or manual override
-    title = soup.find('h1') or soup.find('title')
-    current_ipados = None
-    if title:
-        txt = title.get_text()
-        # extract “26” or “iPadOS 26” from it
-        if 'iPadOS' in txt:
-            # simplistic extraction
-            current_ipados = txt.strip().split()[-1]
-
-    # For macOS, similarly:
-    mac_url = 'https://www.apple.com/au/os/macos/'
-    resp2 = requests.get(mac_url)
-    soup2 = BeautifulSoup(resp2.text, 'html.parser')
-    current_macos = None
-    title2 = soup2.find('h1') or soup2.find('title')
-    if title2:
-        txt2 = title2.get_text()
-        if 'macOS' in txt2:
-            current_macos = txt2.strip().split()[-1]
-
-    return {
-        'iPadOS': current_ipados,
-        'macOS': current_macos
+    result = {
+        'iPadOS': {'current': None, 'current_date': None, 'upcoming': None, 'upcoming_date': None},
+        'macOS': {'current': None, 'current_date': None, 'upcoming': None, 'upcoming_date': None}
     }
 
-def get_public_release_date(version, os_type):
-    """
-    Given a version like "26" or "26.0.1" and os_type "iPadOS" or "macOS",
-    try to approximate or lookup the public release date.
-    For example, many news sources say iOS/iPadOS/macOS 26 → September 15, 2025.
-    """
-    # simple mapping / fallback
-    if version.startswith('26'):
-        # known date for OS 26 public release
-        return '2025-09-15'
-    # else: return None or an empty string
-    return ''
+    # Sort versions (lexical may not perfectly reflect numeric order, but often works for simple cases)
+    for version, info in apple_info.items():
+        os_type = info['os_type']
+        # If it's not beta / RC, consider as candidate for current
+        if not info['is_beta']:
+            # pick the highest (lexicographically) as current
+            if (result[os_type]['current'] is None) or (version > result[os_type]['current']):
+                result[os_type]['current'] = version
+                result[os_type]['current_date'] = info['date']
+        else:
+            # it's a beta (or upcoming). Use the first or latest beta as upcoming
+            if (result[os_type]['upcoming'] is None) or (version > result[os_type]['upcoming']):
+                result[os_type]['upcoming'] = version
+                result[os_type]['upcoming_date'] = info['date']
 
-def build_data_row(os_type, current_ver, upcoming_ver, dates, release_date):
+    return result
+
+def get_chromeos_info():
+    """
+    Return a dict for ChromeOS with fields:
+       current_version, current_date, upcoming_version, upcoming_date
+    This may need to be manual / fallback if scraping is unreliable.
+    """
+    # As a stub / fallback, you could hardcode or fetch from a known API or page.
+    # For example:
     return {
-        'Device Type': 'iPad' if os_type == 'iPadOS' else 'MacBook',
-        'Current OS Version': f"{os_type} {current_ver}" if current_ver else '',
-        'Current OS Release Date': release_date,
-        'Upcoming OS Version': f"{os_type} {upcoming_ver}" if upcoming_ver else '',
-        'Upcoming Announcement Date': dates.get(upcoming_ver, ''),
-        'Release Notes URL': 'https://developer.apple.com/news/releases/'
+        'current_version': '138',        # e.g. ChromeOS 138 stable now publicly
+        'current_date': '',              # (if known)
+        'upcoming_version': '139',       # next
+        'upcoming_date': ''              # (if known)
     }
 
-def main():
-    current, upcoming, dates = parse_apple_releases()
-    public_current = get_public_current_versions()
+def get_windows_info():
+    """
+    Return a dict for Windows with fields:
+       current_version, current_date, upcoming_version, upcoming_date
+    Similar to ChromeOS, may need manual fallback or scraping Microsoft release health / roadmap.
+    """
+    # stub / fallback:
+    return {
+        'current_version': 'Windows 11 23H2',
+        'current_date': '',            # e.g. when 23H2 was released
+        'upcoming_version': 'Windows 11 24H1',
+        'upcoming_date': ''            # (if known)
+    }
 
-    # build rows for iPadOS and macOS
+def build_rows(apple_data, chromeos_info, windows_info):
+    """
+    Build CSV rows for all device types.
+    apple_data has keys iPadOS, macOS with version/date info.
+    """
     rows = []
-    for os_type in ['iPadOS', 'macOS']:
-        cur = public_current.get(os_type)
-        up = upcoming.get(os_type)
-        rel_date = get_public_release_date(cur, os_type)
-        rows.append(build_data_row(os_type, cur, up, dates, rel_date))
 
-    # Also include other device types (Chromebook, Windows) using your previous logic
-    # ...
-    # e.g. rows.append(...) for Chromebook, Windows
+    # iPad
+    ipad = apple_data.get('iPadOS', {})
+    rows.append({
+        'Device Type': 'iPad',
+        'Current OS Version': f"iPadOS {ipad.get('current', '')}" if ipad.get('current') else '',
+        'Current OS Release Date': ipad.get('current_date', ''),
+        'Upcoming OS Version': f"iPadOS {ipad.get('upcoming', '')}" if ipad.get('upcoming') else '',
+        'Upcoming Release Date': ipad.get('upcoming_date', ''),
+        'Release Notes URL': APPLE_REleases_URL
+    })
 
-    # Write to CSV
+    # Mac
+    mac = apple_data.get('macOS', {})
+    rows.append({
+        'Device Type': 'MacBook',
+        'Current OS Version': f"macOS {mac.get('current', '')}" if mac.get('current') else '',
+        'Current OS Release Date': mac.get('current_date', ''),
+        'Upcoming OS Version': f"macOS {mac.get('upcoming', '')}" if mac.get('upcoming') else '',
+        'Upcoming Release Date': mac.get('upcoming_date', ''),
+        'Release Notes URL': APPLE_REleases_URL
+    })
+
+    # ChromeOS
+    cr = chromeos_info
+    rows.append({
+        'Device Type': 'Chromebook',
+        'Current OS Version': f"ChromeOS {cr.get('current_version', '')}",
+        'Current OS Release Date': cr.get('current_date', ''),
+        'Upcoming OS Version': f"ChromeOS {cr.get('upcoming_version', '')}",
+        'Upcoming Release Date': cr.get('upcoming_date', ''),
+        'Release Notes URL': 'https://chromeos.dev/en/releases'
+    })
+
+    # Windows
+    w = windows_info
+    rows.append({
+        'Device Type': 'Windows',
+        'Current OS Version': w.get('current_version', ''),
+        'Current OS Release Date': w.get('current_date', ''),
+        'Upcoming OS Version': w.get('upcoming_version', ''),
+        'Upcoming Release Date': w.get('upcoming_date', ''),
+        'Release Notes URL': 'https://learn.microsoft.com/en-us/windows/release-health/'
+    })
+
+    return rows
+
+def write_csv(rows):
+    fields = [
+        'Device Type',
+        'Current OS Version',
+        'Current OS Release Date',
+        'Upcoming OS Version',
+        'Upcoming Release Date',
+        'Release Notes URL'
+    ]
     with open('os_versions.csv', 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=[
-            'Device Type', 'Current OS Version', 'Current OS Release Date',
-            'Upcoming OS Version', 'Upcoming Announcement Date', 'Release Notes URL'
-        ])
+        writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
         for r in rows:
             writer.writerow(r)
 
-    print("Generated os_versions.csv")
+def main():
+    apple_info = parse_apple_releases()
+    apple_data = pick_current_and_upcoming(apple_info)
+
+    chromeos_info = get_chromeos_info()
+    windows_info = get_windows_info()
+
+    rows = build_rows(apple_data, chromeos_info, windows_info)
+    write_csv(rows)
+    print(f"[{date.today()}] Wrote os_versions.csv with {len(rows)} rows.")
 
 if __name__ == '__main__':
     main()

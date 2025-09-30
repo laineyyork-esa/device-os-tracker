@@ -10,49 +10,50 @@ APPLE_RELEASES_URL = 'https://developer.apple.com/news/releases/'
 def get_apple_os_versions():
     response = requests.get(APPLE_RELEASES_URL)
     soup = BeautifulSoup(response.text, 'html.parser')
-    articles = soup.find_all('article')
+    
+    releases = soup.find_all('h3')  # OS version titles now live in <h3> tags
+    dates = soup.find_all('time')
 
     os_versions = {
         'iPadOS': {'current': None, 'current_date': '', 'upcoming': None, 'upcoming_date': ''},
         'macOS': {'current': None, 'current_date': '', 'upcoming': None, 'upcoming_date': ''}
     }
 
-    version_data = {'iPadOS': [], 'macOS': []}
+    found_versions = {
+        'iPadOS': [],
+        'macOS': []
+    }
 
-    for article in articles:
-        heading = article.find('h2')
-        date_el = article.find('time')
-        if not heading or not date_el:
-            continue
-
-        title = heading.get_text(strip=True)
-        release_date = date_el.get_text(strip=True)
+    for h3, time_tag in zip(releases, dates):
+        title = h3.text.strip()
+        release_date = time_tag.text.strip()
 
         for os_type in ['iPadOS', 'macOS']:
             if title.startswith(os_type):
-                match = re.search(rf'{os_type} (\d+\.\d+(\.\d+)?)', title)
-                if match:
-                    ver = match.group(1)
-                    # Only include versions starting with 26
+                # Extract version (e.g., 26.0.1 or 26.1 beta)
+                version_match = re.search(rf'{os_type} (\d+\.\d+(?:\.\d+)?)(?: beta)?', title)
+                if version_match:
+                    ver = version_match.group(1)
+                    is_beta = 'beta' in title.lower() or 'rc' in title.lower()
+
                     if ver.startswith('26'):
-                        is_beta = 'beta' in title.lower() or 'rc' in title.lower()
-                        version_data[os_type].append({
+                        found_versions[os_type].append({
                             'version': ver,
                             'date': release_date,
                             'is_beta': is_beta
                         })
 
     for os_type in ['iPadOS', 'macOS']:
-        stable_versions = [v for v in version_data[os_type] if not v['is_beta']]
-        beta_versions = [v for v in version_data[os_type] if v['is_beta']]
+        stable = [v for v in found_versions[os_type] if not v['is_beta']]
+        beta = [v for v in found_versions[os_type] if v['is_beta']]
 
-        if stable_versions:
-            latest_stable = max(stable_versions, key=lambda x: version.parse(x['version']))
+        if stable:
+            latest_stable = max(stable, key=lambda x: version.parse(x['version']))
             os_versions[os_type]['current'] = latest_stable['version']
             os_versions[os_type]['current_date'] = latest_stable['date']
 
-        if beta_versions:
-            latest_beta = max(beta_versions, key=lambda x: version.parse(x['version']))
+        if beta:
+            latest_beta = max(beta, key=lambda x: version.parse(x['version']))
             os_versions[os_type]['upcoming'] = latest_beta['version']
             os_versions[os_type]['upcoming_date'] = latest_beta['date']
 

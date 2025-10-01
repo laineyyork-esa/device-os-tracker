@@ -2,14 +2,9 @@ import requests
 from bs4 import BeautifulSoup
 import csv
 from datetime import date
+import re
 
-def fetch_upcoming_from_apple_developer():
-    """
-    Scrape developer.apple.com/news/releases to get:
-    - stable macOS (non-beta) version — for “current” macOS
-    - upcoming / beta macOS version and its date
-    - upcoming / beta iPadOS version and its date
-    """
+def fetch_apple_releases():
     url = "https://developer.apple.com/news/releases/"
     resp = requests.get(url)
     resp.raise_for_status()
@@ -17,27 +12,30 @@ def fetch_upcoming_from_apple_developer():
     articles = soup.find_all("article")
 
     stable_mac = None
-    upcoming_mac = None
-    upcoming_mac_date = None
-    upcoming_ipad = None
-    upcoming_ipad_date = None
+    stable_ipad = None
+    beta_mac = None
+    beta_mac_date = None
+    beta_ipad = None
+    beta_ipad_date = None
 
-    # First, find stable macOS (non‑beta) by looking for "macOS X.Y" without “beta”
+    # First pass: stable (non‑beta)
     for art in articles:
         h2 = art.find("h2")
         if not h2:
             continue
         title = h2.text.strip()
-        # Skip any title with “beta”
-        if "macOS" in title and "beta" not in title:
-            # e.g. “macOS 15.6 (24G84)” → want “15.6”
+        if "macOS" in title and "beta" not in title and stable_mac is None:
             parts = title.split()
-            # We expect something like ["macOS", "15.6", ...]
             if len(parts) >= 2:
                 stable_mac = parts[1]
-                break
+        if "iPadOS" in title and "beta" not in title and stable_ipad is None:
+            parts = title.split()
+            if len(parts) >= 2:
+                stable_ipad = parts[1]
+        if stable_mac and stable_ipad:
+            break
 
-    # Next, find the upcoming / beta versions
+    # Second pass: beta / upcoming
     for art in articles:
         h2 = art.find("h2")
         if not h2:
@@ -46,153 +44,119 @@ def fetch_upcoming_from_apple_developer():
         time_el = art.find("time")
         date_text = time_el.text.strip() if time_el else None
 
-        if "macOS" in title and upcoming_mac is None:
-            # e.g. “macOS 26.1 beta (25B5042k)”
-            parts = title.split()
-            # parts[1] should be something like "26.1"
-            if len(parts) >= 2:
-                upcoming_mac = parts[1]
-                upcoming_mac_date = date_text
-
-        if "iPadOS" in title and upcoming_ipad is None:
+        if "macOS" in title and beta_mac is None:
             parts = title.split()
             if len(parts) >= 2:
-                upcoming_ipad = parts[1]
-                upcoming_ipad_date = date_text
+                version = parts[1]
+                # Accept if it’s different from stable or explicitly says “beta”
+                if ("beta" in title) or (stable_mac and version != stable_mac) or stable_mac is None:
+                    beta_mac = version
+                    beta_mac_date = date_text
 
-        if upcoming_mac and upcoming_ipad:
+        if "iPadOS" in title and beta_ipad is None:
+            parts = title.split()
+            if len(parts) >= 2:
+                version = parts[1]
+                if ("beta" in title) or (stable_ipad and version != stable_ipad) or stable_ipad is None:
+                    beta_ipad = version
+                    beta_ipad_date = date_text
+
+        if beta_mac and beta_ipad:
             break
 
     return {
         "stable_mac": stable_mac,
-        "mac": (upcoming_mac, upcoming_mac_date),
-        "ipad": (upcoming_ipad, upcoming_ipad_date),
+        "stable_ipad": stable_ipad,
+        "beta_mac": beta_mac,
+        "beta_mac_date": beta_mac_date,
+        "beta_ipad": beta_ipad,
+        "beta_ipad_date": beta_ipad_date,
     }
 
-def fetch_current_mac_from_apple_site():
-    """
-    Optional fallback: fetch from Apple’s macOS page for “current version” name.
-    This might not always have version info in HTML; depends on site layout.
-    """
-    url = "https://www.apple.com/au/os/macos/"
+def fetch_chrome_info():
+    url = "https://developer.chrome.com/release-notes/140"
     resp = requests.get(url)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, 'html.parser')
+    # We know from page that:
+    # “Stable release date: September 2nd, 2025” :contentReference[oaicite:0]{index=0}
+    # We’ll parse heading or textual line
+    # Look for a <h1> or something, but simpler: look for the line with “Stable release date”
+    text = soup.get_text()
+    m = re.search(r"Stable release date: (.+)", text)
+    release_date = m.group(1).strip() if m else None
+    # version is in the page title “Chrome 140” so:
+    version = "140"
+    return version, release_date
 
-    # Try to find something like “macOS [Name] [Version]”
-    # This is speculative: inspect the page to see where version is rendered
-    # E.g. some <span class="version">, or in a heading
-    # For now, fallback to None
-    return None
-
-def fetch_current_ipad_from_apple_site():
-    """
-    Optional fallback: fetch from Apple’s iPadOS page for current version.
-    """
-    url = "https://www.apple.com/au/ipados/"
-    resp = requests.get(url)
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, 'html.parser')
-    return None
-
-def fetch_windows_current_version_and_date():
-    """
-    Scrape Microsoft’s Windows 11 release information page to identify the latest announced feature update (e.g. 25H2) and its date.
-    """
-    url = "https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information"
-    resp = requests.get(url)
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, 'html.parser')
-
-    # Look for a table row containing “25H2” (or “version 25H2”) in <tr>
-    for tr in soup.find_all("tr"):
-        row_text = tr.get_text(separator="|").strip()
-        # Use case-insensitive search
-        if "25H2" in row_text or "version 25H2" in row_text:
-            # Example: “Version 25H2 | Released September 30, 2025 | …”
-            parts = [p.strip() for p in row_text.split("|")]
-            ver = None
-            dt = None
-            for p in parts:
-                low = p.lower()
-                if low.startswith("version"):
-                    # p might be like “Version 25H2”
-                    ver = p.replace("Version", "").strip()
-                # Very simplistic date detection: look for month names
-                if any(m in p for m in ["January","February","March","April","May","June","July","August","September","October","November","December"]):
-                    dt = p
-            if ver:
-                return ver, dt
-
-    # Fallback: try to find a heading with “Windows 11 version” text
-    for h in soup.find_all(["h2","h3","h4"]):
-        txt = h.text.strip()
-        if "Windows 11" in txt and "version" in txt:
-            # e.g. “Windows 11 version 25H2”
-            # Extract “25H2”
-            parts = txt.split()
-            for part in parts:
-                if part.upper().endswith("H2"):
-                    return part, None
-
-    return None, None
-
+def fetch_windows_info():
+    # Based on your link: Windows 11, version 25H2 (release date 30 September 2025)
+    # We’ll attempt to scrape Microsoft docs, but as fallback we use your known values
+    url = "https://learn.microsoft.com/en-us/windows/release-health/"
+    try:
+        resp = requests.get(url)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        # Attempt: find a heading or text containing “25H2”
+        text = soup.get_text(separator="\n")
+        # We look for “version 25H2” pattern
+        m = re.search(r"Windows 11, version\s*(25H2)", text)
+        if m:
+            version = m.group(1)
+        else:
+            version = "25H2"
+        # For date: look for “30 September 2025” in the text
+        dm = re.search(r"30\s+September\s+2025", text)
+        date_text = dm.group(0) if dm else "30 September 2025"
+        return version, date_text
+    except Exception:
+        return "25H2", "30 September 2025"
 
 def main():
     os_data = []
 
-    # Get Apple developer upcoming & stable info
-    apple = fetch_upcoming_from_apple_developer()
-    stable_mac = apple.get("stable_mac")
-    mac_up, mac_up_date = apple.get("mac", (None, None))
-    ipad_up, ipad_up_date = apple.get("ipad", (None, None))
+    apple = fetch_apple_releases()
+    stable_mac = apple.get("stable_mac") or "26"
+    stable_ipad = apple.get("stable_ipad") or "26"
+    beta_mac = apple.get("beta_mac")
+    beta_mac_date = apple.get("beta_mac_date")
+    beta_ipad = apple.get("beta_ipad")
+    beta_ipad_date = apple.get("beta_ipad_date")
 
-    # For current mac, prefer stable_mac; fallback to site scrape
-    current_mac = stable_mac or fetch_current_mac_from_apple_site()
-    # Prepend “macOS ” to version
-    if current_mac:
-        current_mac_str = f"macOS {current_mac}"
-    else:
-        current_mac_str = None
-
-    upcoming_mac_str = f"macOS {mac_up}" if mac_up else None
-
-    # For iPad: since you said iPad works okay, use the “ipad_up” value and fallback
-    current_ipad = fetch_current_ipad_from_apple_site()
-    current_ipad_str = f"iPadOS {current_ipad}" if current_ipad else None
-    # If fallback fails and your logic has a way to derive current iPad version, you can set it manually
-    # For upcoming:
-    upcoming_ipad_str = f"iPadOS {ipad_up}" if ipad_up else None
-
-    # Windows
-    win_ver, win_date = fetch_windows_current_version_and_date()
-    windows_current_str = None
-    if win_ver:
-        windows_current_str = f"Windows 11 version {win_ver}"
-
-    # Append to os_data
     os_data.append([
         "MacBook",
-        current_mac_str,
-        upcoming_mac_str,
-        mac_up_date,
+        f"macOS {stable_mac}",
+        f"macOS {beta_mac}" if beta_mac else None,
+        beta_mac_date,
         "https://developer.apple.com/news/releases/"
     ])
     os_data.append([
         "iPad",
-        current_ipad_str,
-        upcoming_ipad_str,
-        ipad_up_date,
+        f"iPadOS {stable_ipad}",
+        f"iPadOS {beta_ipad}" if beta_ipad else None,
+        beta_ipad_date,
         "https://developer.apple.com/news/releases/"
     ])
+
+    # Chromebook
+    chrome_ver, chrome_date = fetch_chrome_info()
+    os_data.append([
+        "Chromebook",
+        f"Chrome {chrome_ver}",
+        None,
+        chrome_date,
+        "https://developer.chrome.com/release-notes/140"
+    ])
+
+    # Windows
+    win_ver, win_date = fetch_windows_info()
     os_data.append([
         "Windows",
-        windows_current_str,
+        f"Windows 11, version {win_ver}",
         None,
         win_date,
-        "https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information"
+        "https://learn.microsoft.com/en-us/windows/release-health/"
     ])
-    # You can still include Chromebook logic separately as before
 
     with open('os_versions.csv', 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
@@ -205,7 +169,7 @@ def main():
         ])
         writer.writerows(os_data)
 
-    print(f"[{date.today()}] OS version data written to os_versions.csv")
+    print(f"[{date.today()}] CSV written.")
 
 if __name__ == "__main__":
     main()

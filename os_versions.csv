@@ -1,5 +1,4 @@
 Device Type,Current OS Version,Upcoming OS Version,Upcoming Release Date,Release Notes URL
-iPad,iPadOS 26.0.1,iPadOS 27,2025-11-15,https://developer.apple.com/news/releases/
-MacBook,macOS 26.0.1,macOS 27,2025-10-12,https://developer.apple.com/news/releases/
-Chromebook,ChromeOS 116,ChromeOS 117,2025-10-10,https://chromeos.dev/en/releases
-Windows,Windows 11 23H2,Windows 11 24H1,2025-11-01,https://learn.microsoft.com/en-us/windows/release-health/
+MacBook,macOS 26.0.1,macOS 26.0.1,,https://developer.apple.com/news/releases/
+iPad,,iPadOS 26.0.1,,https://developer.apple.com/news/releases/
+Windows,,,,https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information

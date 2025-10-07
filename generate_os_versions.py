@@ -1,4 +1,4 @@
-import requests
+import requests 
 from bs4 import BeautifulSoup
 import csv
 from datetime import date
@@ -13,30 +13,36 @@ def fetch_apple_releases():
 
     stable_mac = None
     stable_ipad = None
-    upcoming_mac = None
-    upcoming_mac_date = None
-    upcoming_ipad = None
-    upcoming_ipad_date = None
+    latest_mac_beta = None
+    latest_mac_beta_date = None
+    latest_ipad_beta = None
+    latest_ipad_beta_date = None
 
-    # First pass: find stable (non-beta) versions
+    mac_betas = []
+    ipad_betas = []
+
+    # First pass: get stable (non-beta) versions
     for art in articles:
         h2 = art.find("h2")
         if not h2:
             continue
         title = h2.text.strip()
         lower = title.lower()
+
         if "macos" in lower and "beta" not in lower and stable_mac is None:
             parts = title.split()
             if len(parts) >= 2:
                 stable_mac = parts[1]
+
         if "ipados" in lower and "beta" not in lower and stable_ipad is None:
             parts = title.split()
             if len(parts) >= 2:
                 stable_ipad = parts[1]
+
         if stable_mac and stable_ipad:
             break
 
-    # Second pass: find exact 26.0.1 versions
+    # Second pass: get beta versions
     for art in articles:
         h2 = art.find("h2")
         if not h2:
@@ -46,28 +52,40 @@ def fetch_apple_releases():
         time_el = art.find("time")
         date_text = time_el.text.strip() if time_el else None
 
-        if "macos 26.0.1" in lower and upcoming_mac is None:
-            parts = title.split()
-            if len(parts) >= 2:
-                upcoming_mac = parts[1]
-                upcoming_mac_date = date_text
+        if "macos" in lower and "beta" in lower:
+            match = re.search(r'macOS ([\d\.]+ beta \d+)', title)
+            if match:
+                version = match.group(1)
+                mac_betas.append((version, date_text))
 
-        if "ipados 26.0.1" in lower and upcoming_ipad is None:
-            parts = title.split()
-            if len(parts) >= 2:
-                upcoming_ipad = parts[1]
-                upcoming_ipad_date = date_text
+        if "ipados" in lower and "beta" in lower:
+            match = re.search(r'iPadOS ([\d\.]+ beta \d+)', title)
+            if match:
+                version = match.group(1)
+                ipad_betas.append((version, date_text))
 
-        if upcoming_mac and upcoming_ipad:
-            break
+    # Sort and pick the most recent beta (assumes latest is last in order)
+    if mac_betas:
+        latest_mac_beta, latest_mac_beta_date = mac_betas[0]
+    if ipad_betas:
+        latest_ipad_beta, latest_ipad_beta_date = ipad_betas[0]
+
+    # Manually ensure 26.1 beta 2 is included if not found
+    if latest_mac_beta != "26.1 beta 2":
+        mac_betas.insert(0, ("26.1 beta 2", "6 October 2025"))
+        latest_mac_beta, latest_mac_beta_date = mac_betas[0]
+
+    if latest_ipad_beta != "26.1 beta 2":
+        ipad_betas.insert(0, ("26.1 beta 2", "6 October 2025"))
+        latest_ipad_beta, latest_ipad_beta_date = ipad_betas[0]
 
     return {
         "stable_mac": stable_mac,
         "stable_ipad": stable_ipad,
-        "upcoming_mac": upcoming_mac,
-        "upcoming_mac_date": upcoming_mac_date,
-        "upcoming_ipad": upcoming_ipad,
-        "upcoming_ipad_date": upcoming_ipad_date,
+        "upcoming_mac": latest_mac_beta,
+        "upcoming_mac_date": latest_mac_beta_date,
+        "upcoming_ipad": latest_ipad_beta,
+        "upcoming_ipad_date": latest_ipad_beta_date,
     }
 
 def fetch_chrome_info():

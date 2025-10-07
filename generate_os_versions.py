@@ -220,6 +220,10 @@ def main():
     for row in os_data:
         print(row)
 
+    if not os_data:
+        print("[Error] No data to write. Exiting.")
+        return  # Early exit if no data.
+
   # Write to CSV
     with open('os_versions.csv', 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)

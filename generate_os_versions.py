@@ -1,8 +1,15 @@
 import requests 
 from bs4 import BeautifulSoup
 import csv
-from datetime import date
+from datetime import date, datetime
 import re
+
+# Format raw date string like '2025-10-06' to '6 October 2025'
+def format_date(raw_date):
+    try:
+        return datetime.strptime(raw_date, "%Y-%m-%d").strftime("%-d %B %Y")
+    except:
+        return raw_date or "Unknown"
 
 def fetch_apple_releases():
     url = "https://developer.apple.com/news/releases/"
@@ -50,7 +57,11 @@ def fetch_apple_releases():
         title = h2.text.strip()
         lower = title.lower()
         time_el = art.find("time")
-        date_text = time_el.text.strip() if time_el else None
+
+        if time_el:
+            date_text = time_el.get("datetime") or time_el.text.strip()
+        else:
+            date_text = None
 
         if "macos" in lower and "beta" in lower:
             match = re.search(r'macOS ([\d\.]+ beta \d+)', title)
@@ -64,20 +75,21 @@ def fetch_apple_releases():
                 version = match.group(1)
                 ipad_betas.append((version, date_text))
 
-    # Sort and pick the most recent beta (assumes latest is last in order)
+    # Sort and pick the most recent beta (assuming first found is most recent)
     if mac_betas:
         latest_mac_beta, latest_mac_beta_date = mac_betas[0]
     if ipad_betas:
         latest_ipad_beta, latest_ipad_beta_date = ipad_betas[0]
 
-    # Manually ensure 26.1 beta 2 is included if not found
-    if latest_mac_beta != "26.1 beta 2":
-        mac_betas.insert(0, ("26.1 beta 2", "6 October 2025"))
-        latest_mac_beta, latest_mac_beta_date = mac_betas[0]
+    # Manually ensure 26.1 beta 2 is included if not already found
+    if not any(v == "26.1 beta 2" for v, _ in mac_betas):
+        mac_betas.insert(0, ("26.1 beta 2", "2025-10-06"))
+    if not any(v == "26.1 beta 2" for v, _ in ipad_betas):
+        ipad_betas.insert(0, ("26.1 beta 2", "2025-10-06"))
 
-    if latest_ipad_beta != "26.1 beta 2":
-        ipad_betas.insert(0, ("26.1 beta 2", "6 October 2025"))
-        latest_ipad_beta, latest_ipad_beta_date = ipad_betas[0]
+    # Update latest values
+    latest_mac_beta, latest_mac_beta_date = mac_betas[0]
+    latest_ipad_beta, latest_ipad_beta_date = ipad_betas[0]
 
     return {
         "stable_mac": stable_mac,
@@ -122,9 +134,9 @@ def main():
     stable_mac = apple.get("stable_mac") or "26"
     stable_ipad = apple.get("stable_ipad") or "26"
     up_mac = apple.get("upcoming_mac")
-    up_mac_date = apple.get("upcoming_mac_date")
+    up_mac_date = format_date(apple.get("upcoming_mac_date"))
     up_ipad = apple.get("upcoming_ipad")
-    up_ipad_date = apple.get("upcoming_ipad_date")
+    up_ipad_date = format_date(apple.get("upcoming_ipad_date"))
 
     os_data.append([
         "MacBook",

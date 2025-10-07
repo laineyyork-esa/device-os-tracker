@@ -76,10 +76,10 @@ def fetch_apple_releases():
         title = h2.get_text(strip=True)
         lower = title.lower()
 
-        if "macos" in lower and "beta" not in lower and stable_mac is None:
-@@ -49,47 +77,56 @@ def fetch_apple_releases():
-        if stable_mac and stable_ipad:
-            break
+         if "macos" in lower and "beta" not in lower and stable_mac is None:
+        parts = title.split()
+        if len(parts) >= 2:
+            stable_mac = parts[1]
 
     # Second pass: get beta versions
     # Second pass: find beta versions and their dates
@@ -154,7 +154,7 @@ def fetch_apple_releases():
 
     return {
         "stable_mac": stable_mac,
-@@ -104,9 +141,9 @@ def fetch_chrome_info():
+     -104,9 +141,9  def fetch_chrome_info():
     url = "https://developer.chrome.com/release-notes/140"
     resp = requests.get(url)
     resp.raise_for_status()
@@ -166,7 +166,7 @@ def fetch_apple_releases():
     release_date = m.group(1).strip() if m else "September 2, 2025"
     version = "140"
     return version, release_date
-@@ -116,11 +153,11 @@ def fetch_windows_info():
+ -116,11 +153,11  def fetch_windows_info():
     try:
         resp = requests.get(url)
         resp.raise_for_status()
@@ -181,7 +181,7 @@ def fetch_apple_releases():
         date_text = dm.group(0) if dm else "30 September 2025"
         return version, date_text
     except Exception:
-@@ -129,14 +166,17 @@ def fetch_windows_info():
+ -129,14 +166,17  def fetch_windows_info():
 def main():
     os_data = []
 
@@ -204,7 +204,7 @@ def main():
 
     os_data.append([
         "MacBook",
-@@ -153,7 +193,6 @@ def main():
+ -153,7 +193,6  def main():
         "https://developer.apple.com/news/releases/"
     ])
 
@@ -212,7 +212,7 @@ def main():
     chrome_ver, chrome_date = fetch_chrome_info()
     os_data.append([
         "Chromebook",
-@@ -163,7 +202,6 @@ def main():
+ -163,7 +202,6  def main():
         "https://developer.chrome.com/release-notes/140"
     ])
 
@@ -220,7 +220,7 @@ def main():
     win_ver, win_date = fetch_windows_info()
     os_data.append([
         "Windows",
-@@ -173,8 +211,8 @@ def main():
+ -173,8 +211,8  def main():
         "https://learn.microsoft.com/en-us/windows/release-health/"
     ])
 

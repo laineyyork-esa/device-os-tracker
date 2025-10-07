@@ -220,9 +220,8 @@ def main():
     for row in os_data:
         print(row)
 
-    # Write to CSV
-    file_path = os.path.abspath("os_versions.csv")
-    with open(file_path, "w", newline="", encoding="utf-8") as f:
+  # Write to CSV
+    with open('os_versions.csv', 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow([
             "Device Type",
@@ -233,6 +232,8 @@ def main():
         ])
         writer.writerows(os_data)
 
-    # Confirmation message
-    print(f"[{date.today()}] CSV written as '{file_path}'")
+    print(f"[{date.today()}] CSV written as 'os_versions.csv'")
+
+if __name__ == "__main__":
+    main()
 

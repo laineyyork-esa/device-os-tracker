@@ -28,23 +28,22 @@ def format_date(raw_date):
     """
     if not raw_date:
         return "Unknown"
-    # If it’s ISO like "2025-10-06"
+    
+    # Try ISO format (e.g., "2025-10-06")
     try:
-        # Some systems on Windows may not like %-d, so using day, month, year
         d = datetime.strptime(raw_date, "%Y-%m-%d")
         return d.strftime("%-d %B %Y")
     except ValueError:
         pass
-    # Sometimes page might have "October 6, 2025"
+
+    # Try format like "October 6, 2025"
     try:
-        return datetime.strptime(raw_date, "%Y-%m-%d").strftime("%-d %B %Y")
-    except:
-        return raw_date or "Unknown"
-    d = datetime.strptime(raw_date, "%B %d, %Y")
-    return d.strftime("%-d %B %Y")
+        d = datetime.strptime(raw_date, "%B %d, %Y")
+        return d.strftime("%-d %B %Y")
     except ValueError:
         pass
-    # fallback
+
+    # If all else fails
     return raw_date
 
 def fetch_apple_releases():

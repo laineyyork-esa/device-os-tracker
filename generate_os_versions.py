@@ -150,14 +150,15 @@ def fetch_apple_releases():
     }
 
 def fetch_chrome_info():
-    url = "https://developer.chrome.com/release-notes/140"
+    # Updated URL for the latest release notes
+    url = "https://developer.chrome.com/release-notes"
     resp = requests.get(url)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, 'html.parser')
     text = soup.get_text()
     m = re.search(r"Stable release date:\s*(.+)", text)
-    release_date = m.group(1).strip() if m else "September 2, 2025"
-    version = "140"
+    release_date = m.group(1).strip() if m else "30 September 2025"
+    version = "141"  # Updated version to 141
     return version, release_date
 
 def fetch_windows_info():

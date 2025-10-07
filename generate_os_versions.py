@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 import csv
 from datetime import date, datetime
 import re
+import os
 
 # Format raw date string like '2025-10-06' to '6 October 2025'
 def parse_date_from_time_element(time_el):
@@ -207,9 +208,31 @@ def main():
     # Windows data
     win_ver, win_date = fetch_windows_info()
     os_data.append([
-     "Windows",
+        "Windows",
         f"Windows 11, version {win_ver}",
         None,
         win_date,
         "https://learn.microsoft.com/en-us/windows/release-health/"
     ])
+
+    # Debugging - print data before writing to CSV
+    print("OS data to write:")
+    for row in os_data:
+        print(row)
+
+    # Write to CSV
+    file_path = os.path.abspath("os_versions.csv")
+    with open(file_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "Device Type",
+            "Current OS Version",
+            "Upcoming OS Version",
+            "Upcoming Release Date",
+            "Release Notes URL"
+        ])
+        writer.writerows(os_data)
+
+    # Confirmation message
+    print(f"[{date.today()}] CSV written as '{file_path}'")
+

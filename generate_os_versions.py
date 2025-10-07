@@ -212,6 +212,7 @@ def main():
     ])
 
     # Write CSV
+  try:
     with open("os_versions.csv", "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow([
@@ -222,8 +223,7 @@ def main():
             "Release Notes URL"
         ])
         writer.writerows(os_data)
-
     print(f"[{date.today()}] CSV written as 'os_versions.csv'")
+except Exception as e:
+    print(f"Error writing CSV: {e}")
 
-if __name__ == "__main__":
-    main()

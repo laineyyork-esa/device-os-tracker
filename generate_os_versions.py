@@ -89,10 +89,13 @@ def fetch_apple_releases():
             continue
         title = h2.text.strip()
         lower = title.lower()
+        
+        # Improved date extraction: check for <time> tag within each article
         time_el = art.find("time")
         date_text = parse_date_from_time_element(time_el)
 
         if time_el:
+            # Get the 'datetime' attribute or fallback to inner text
             date_text = time_el.get("datetime") or time_el.text.strip()
         else:
             date_text = None
@@ -102,14 +105,22 @@ def fetch_apple_releases():
             match = re.search(r'macOS ([\d\.]+ beta \d+)', title)
             if match:
                 version = match.group(1).strip()
-                mac_betas.append((version, date_text))
+                # Check if we can get the date, otherwise log an issue
+                if date_text:
+                    mac_betas.append((version, date_text))
+                else:
+                    print(f"[Warning] No date found for macOS beta version {version}.")
 
         # iPadOS beta
         if "ipados" in lower and "beta" in lower:
             match = re.search(r'iPadOS ([\d\.]+ beta \d+)', title)
             if match:
                 version = match.group(1).strip()
-                ipad_betas.append((version, date_text))
+                # Check if we can get the date, otherwise log an issue
+                if date_text:
+                    ipad_betas.append((version, date_text))
+                else:
+                    print(f"[Warning] No date found for iPadOS beta version {version}.")
 
     # Sort and pick the most recent beta (assuming first found is most recent)
     if mac_betas:
@@ -176,9 +187,6 @@ def main():
     up_ipad = apple.get("upcoming_ipad")
     up_ipad_date_raw = apple.get("upcoming_ipad_date")
 
-    # Debugging: Print the fetched data
-    print(f"Fetched Apple Data: {stable_mac}, {stable_ipad}, {up_mac}, {up_ipad}")
-
     # Format the date strings for CSV
     up_mac_date = format_date(up_mac_date_raw)
     up_ipad_date = format_date(up_ipad_date_raw)
@@ -218,7 +226,7 @@ def main():
         "https://learn.microsoft.com/en-us/windows/release-health/"
     ])
 
-    # Debugging: print data before writing to CSV
+    # Debugging - print data before writing to CSV
     print("OS data to write:")
     for row in os_data:
         print(row)
@@ -228,20 +236,18 @@ def main():
         return  # Early exit if no data.
 
     # Write to CSV
-    try:
-        with open('os_versions.csv', 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                "Device Type",
-                "Current OS Version",
-                "Upcoming OS Version",
-                "Upcoming Release Date",
-                "Release Notes URL"
-            ])
-            writer.writerows(os_data)
-        print(f"[{date.today()}] CSV written as 'os_versions.csv'")
-    except Exception as e:
-        print(f"Error writing CSV: {e}")
+    with open('os_versions.csv', 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "Device Type",
+            "Current OS Version",
+            "Upcoming OS Version",
+            "Upcoming Release Date",
+            "Release Notes URL"
+        ])
+        writer.writerows(os_data)
+
+    print(f"[{date.today()}] CSV written as 'os_versions.csv'")
 
 if __name__ == "__main__":
     main()

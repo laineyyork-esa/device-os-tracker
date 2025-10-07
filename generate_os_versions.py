@@ -207,8 +207,8 @@ def main():
     # Windows data
     win_ver, win_date = fetch_windows_info()
     os_data.append([
-         "Windows",
-        f"Windows 11, version
+     "Windows",
+        f"Windows 11, version {win_ver}",
         None,
         win_date,
         "https://learn.microsoft.com/en-us/windows/release-health/"

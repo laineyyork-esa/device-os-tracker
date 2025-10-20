@@ -29,7 +29,7 @@ def format_date(raw_date):
     """
     if not raw_date:
         return "Unknown"
-    
+   
     # Try ISO format (e.g., "2025-10-06")
     try:
         d = datetime.strptime(raw_date, "%Y-%m-%d")
@@ -52,8 +52,8 @@ def fetch_apple_releases():
     resp = requests.get(url)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, 'html.parser')
-    articles = soup.find_all("article")
-
+    # articles = soup.find_all("article")
+    articles = soup.find_all("section", {"class": "article-content-container"})
     stable_mac = None
     stable_ipad = None
     latest_mac_beta = None
@@ -71,7 +71,13 @@ def fetch_apple_releases():
             continue
         title = h2.text.strip()
         lower = title.lower()
+    
+        time_el = art.find("p", {"class": "article-date"})
+        date_text = time_el.text.strip()
+        
+        print (title, date_text)
 
+        # release versions
         if "macos" in lower and "beta" not in lower and stable_mac is None:
             parts = title.split()
             if len(parts) >= 2:
@@ -82,25 +88,7 @@ def fetch_apple_releases():
             if len(parts) >= 2:
                 stable_ipad = parts[1]
 
-    # Second pass: get beta versions
-    for art in articles:
-        h2 = art.find("h2")
-        if not h2:
-            continue
-        title = h2.text.strip()
-        lower = title.lower()
-        
-        # Improved date extraction: check for <time> tag within each article
-        time_el = art.find("time")
-        date_text = parse_date_from_time_element(time_el)
-
-        if time_el:
-            # Get the 'datetime' attribute or fallback to inner text
-            date_text = time_el.get("datetime") or time_el.text.strip()
-        else:
-            date_text = None
-
-        # macOS beta
+        # beta versions
         if "macos" in lower and "beta" in lower:
             match = re.search(r'macOS ([\d\.]+ beta \d+)', title)
             if match:
@@ -122,11 +110,12 @@ def fetch_apple_releases():
                 else:
                     print(f"[Warning] No date found for iPadOS beta version {version}.")
 
+    
     # Sort and pick the most recent beta (assuming first found is most recent)
     if mac_betas:
-        latest_mac_beta, latest_mac_beta_date = mac_betas[0]
+        latest_mac_beta, latest_mac_beta_date = mac_betas[-1]
     if ipad_betas:
-        latest_ipad_beta, latest_ipad_beta_date = ipad_betas[0]
+        latest_ipad_beta, latest_ipad_beta_date = ipad_betas[-1]
 
     # Manually ensure 26.1 beta 2 is included if not already found
     target = "26.1 beta 2"
@@ -137,9 +126,8 @@ def fetch_apple_releases():
         ipad_betas.insert(0, (target, target_dt))
 
     # Update latest values
-    latest_mac_beta, latest_mac_beta_date = mac_betas[0]
-    latest_ipad_beta, latest_ipad_beta_date = ipad_betas[0]
-
+    latest_mac_beta, latest_mac_beta_date = mac_betas[-1]
+    latest_ipad_beta, latest_ipad_beta_date = ipad_betas[-1]
     return {
         "stable_mac": stable_mac,
         "stable_ipad": stable_ipad,
@@ -178,7 +166,7 @@ def fetch_windows_info():
 
 def main():
     os_data = []
-
+    
     # Apple data
     apple = fetch_apple_releases()
     stable_mac = apple.get("stable_mac") or "Unknown"

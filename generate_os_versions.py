@@ -173,7 +173,7 @@ def fetch_windows_info():
 
 def main():
     os_data = []
-    
+
     # Apple data
     apple = fetch_apple_releases()
     stable_mac = apple.get("stable_mac") or "Unknown"
@@ -203,25 +203,23 @@ def main():
     ])
 
     # ChromeOS data
-   chrome_ver, chrome_date = fetch_chrome_info()
-beta_ver, beta_date = fetch_chrome_beta_info()
+    chrome_ver, chrome_date = fetch_chrome_info()
+    beta_ver, beta_date = fetch_chrome_beta_info()
 
-os_data = []
-os_data.append([
-    "Chromebook",
-    f"Chrome {chrome_ver}",
-    None,
-    chrome_date,
-    "https://developer.chrome.com/release-notes"
-])
-os_data.append([
-    "Chromebook (Beta)",
-    f"Chrome {beta_ver}",
-    None,
-    beta_date,
-    "https://developer.chrome.com/blog/chrome-138-beta"
-])
-
+    os_data.append([
+        "Chromebook",
+        f"Chrome {chrome_ver}",
+        None,
+        chrome_date,
+        "https://developer.chrome.com/release-notes"
+    ])
+    os_data.append([
+        "Chromebook (Beta)",
+        f"Chrome {beta_ver}",
+        None,
+        beta_date,
+        "https://developer.chrome.com/blog/chrome-138-beta"
+    ])
 
     # Windows data
     win_ver, win_date = fetch_windows_info()

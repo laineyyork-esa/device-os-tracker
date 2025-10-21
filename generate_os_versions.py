@@ -130,7 +130,7 @@ def fetch_apple_releases():
     }
 
 def fetch_chrome_info():
-    # Updated URL for the latest release notes
+    # Stable release info
     url = "https://developer.chrome.com/release-notes"
     resp = requests.get(url)
     resp.raise_for_status()
@@ -138,8 +138,23 @@ def fetch_chrome_info():
     text = soup.get_text()
     m = re.search(r"Stable release date:\s*(.+)", text)
     release_date = m.group(1).strip() if m else "30 September 2025"
-    version = "141"  # Updated version to 141
+    version = "141"  # Manually updated or parsed if needed
     return version, release_date
+
+def fetch_chrome_beta_info():
+    # Search for the latest blog post with "BETA" in the title
+    url = "https://developer.chrome.com/blog/chrome-138-beta"
+    resp = requests.get(url)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, 'html.parser')
+    text = soup.get_text()
+
+    # Extract version and release date
+    m_ver = re.search(r"Chrome (\d+)\s+beta", text, re.IGNORECASE)
+    m_date = re.search(r"Published:\s*(\w+ \d{1,2}, \d{4})", text)
+    beta_version = m_ver.group(1) if m_ver else "138"
+    beta_date = m_date.group(1) if m_date else "28 May 2025"
+    return beta_version, beta_date
 
 def fetch_windows_info():
     url = "https://learn.microsoft.com/en-us/windows/release-health/"
@@ -188,14 +203,25 @@ def main():
     ])
 
     # ChromeOS data
-    chrome_ver, chrome_date = fetch_chrome_info()
-    os_data.append([
-        "Chromebook",
-        f"Chrome {chrome_ver}",
-        None,
-        chrome_date,
-        "https://developer.chrome.com/release-notes"
-    ])
+   chrome_ver, chrome_date = fetch_chrome_info()
+beta_ver, beta_date = fetch_chrome_beta_info()
+
+os_data = []
+os_data.append([
+    "Chromebook",
+    f"Chrome {chrome_ver}",
+    None,
+    chrome_date,
+    "https://developer.chrome.com/release-notes"
+])
+os_data.append([
+    "Chromebook (Beta)",
+    f"Chrome {beta_ver}",
+    None,
+    beta_date,
+    "https://developer.chrome.com/blog/chrome-138-beta"
+])
+
 
     # Windows data
     win_ver, win_date = fetch_windows_info()

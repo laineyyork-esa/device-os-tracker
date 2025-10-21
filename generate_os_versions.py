@@ -143,7 +143,7 @@ def fetch_chrome_info():
 
 def fetch_chrome_beta_info():
     # Search for the latest blog post with "BETA" in the title
-    url = "https://developer.chrome.com/blog/chrome-138-beta"
+    url = "https://developer.chrome.com/blog/"
     resp = requests.get(url)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, 'html.parser')

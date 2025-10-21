@@ -117,14 +117,6 @@ def fetch_apple_releases():
     if ipad_betas:
         latest_ipad_beta, latest_ipad_beta_date = ipad_betas[-1]
 
-    # Manually ensure 26.1 beta 2 is included if not already found
-    target = "26.1 beta 2"
-    target_dt = "2025-10-06"
-    if not any(v.lower() == target.lower() for (v, _) in mac_betas):
-        mac_betas.insert(0, (target, target_dt))
-    if not any(v.lower() == target.lower() for (v, _) in ipad_betas):
-        ipad_betas.insert(0, (target, target_dt))
-
     # Update latest values
     latest_mac_beta, latest_mac_beta_date = mac_betas[-1]
     latest_ipad_beta, latest_ipad_beta_date = ipad_betas[-1]
@@ -202,7 +194,7 @@ def main():
         f"Chrome {chrome_ver}",
         None,
         chrome_date,
-        "https://developer.chrome.com/release-notes/140"
+        "https://developer.chrome.com/release-notes"
     ])
 
     # Windows data

@@ -5,254 +5,233 @@ from datetime import date, datetime
 import re
 import os
 
-# Format raw date string like '2025-10-06' to '6 October 2025'
+# ---------- Utility Functions ----------
+
 def parse_date_from_time_element(time_el):
-    """
-    Given a <time> tag, return the best date string:
-    Prefer the datetime attribute; if missing, fallback to .text
-    Normalize whitespace.
-    """
-    if time_el is None:
+    """Try to extract a date from a <time> element."""
+    if not time_el:
         return None
-    # Try the datetime attribute first
     dt = time_el.get("datetime")
     if dt:
         return dt.strip()
-    # fallback to inner text
-    text = time_el.get_text().strip()
-    return text or None
+    return time_el.get_text(strip=True) or None
 
 def format_date(raw_date):
-    """
-    Try to convert raw_date (ISO or other) into a nicer readable form.
-    If parse fails, return raw_date as-is.
-    """
+    """Normalize date strings into readable '6 October 2025' format."""
     if not raw_date:
         return "Unknown"
-   
-    # Try ISO format (e.g., "2025-10-06")
-    try:
-        d = datetime.strptime(raw_date, "%Y-%m-%d")
-        return d.strftime("%-d %B %Y")
-    except ValueError:
-        pass
-
-    # Try format like "October 6, 2025"
-    try:
-        d = datetime.strptime(raw_date, "%B %d, %Y")
-        return d.strftime("%-d %B %Y")
-    except ValueError:
-        pass
-
-    # If all else fails
+    for fmt in ("%Y-%m-%d", "%B %d, %Y", "%d %B %Y"):
+        try:
+            return datetime.strptime(raw_date, fmt).strftime("%-d %B %Y")
+        except ValueError:
+            continue
     return raw_date
 
+# ---------- Scraping Functions ----------
+
 def fetch_apple_releases():
+    """Fetch current and upcoming macOS/iPadOS releases from Apple Developer."""
     url = "https://developer.apple.com/news/releases/"
     resp = requests.get(url)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, 'html.parser')
-    # articles = soup.find_all("article")
+
     articles = soup.find_all("section", {"class": "article-content-container"})
+
     stable_mac = None
     stable_ipad = None
-    latest_mac_beta = None
-    latest_mac_beta_date = None
-    latest_ipad_beta = None
-    latest_ipad_beta_date = None
+    mac_betas, ipad_betas = [], []
 
-    mac_betas = []
-    ipad_betas = []
-
-    # First pass: get stable (non-beta) versions
     for art in articles:
         h2 = art.find("h2")
         if not h2:
             continue
         title = h2.text.strip()
+        link = h2.find("a")["href"] if h2.find("a") else url
+        if link.startswith("/"):
+            link = f"https://developer.apple.com{link}"
+
+        date_el = art.find("p", {"class": "article-date"})
+        date_text = date_el.text.strip() if date_el else None
+
         lower = title.lower()
-    
-        time_el = art.find("p", {"class": "article-date"})
-        date_text = time_el.text.strip()
-        
-        print (title, date_text)
 
-        # release versions
-        if "macos" in lower and "beta" not in lower and stable_mac is None:
+        # Stable releases
+        if "macos" in lower and "beta" not in lower and not stable_mac:
             parts = title.split()
             if len(parts) >= 2:
-                stable_mac = parts[1]
+                stable_mac = {"version": parts[1], "link": link}
 
-        if "ipados" in lower and "beta" not in lower and stable_ipad is None:
+        if "ipados" in lower and "beta" not in lower and not stable_ipad:
             parts = title.split()
             if len(parts) >= 2:
-                stable_ipad = parts[1]
+                stable_ipad = {"version": parts[1], "link": link}
 
-        # beta versions
+        # Beta releases
         if "macos" in lower and "beta" in lower:
             match = re.search(r'macOS ([\d\.]+ beta \d+)', title)
             if match:
-                version = match.group(1).strip()
-                # Check if we can get the date, otherwise log an issue
-                if date_text:
-                    mac_betas.append((version, date_text))
-                else:
-                    print(f"[Warning] No date found for macOS beta version {version}.")
-
-        # iPadOS beta
+                mac_betas.append({
+                    "version": match.group(1),
+                    "date": date_text,
+                    "link": link
+                })
         if "ipados" in lower and "beta" in lower:
             match = re.search(r'iPadOS ([\d\.]+ beta \d+)', title)
             if match:
-                version = match.group(1).strip()
-                # Check if we can get the date, otherwise log an issue
-                if date_text:
-                    ipad_betas.append((version, date_text))
-                else:
-                    print(f"[Warning] No date found for iPadOS beta version {version}.")
+                ipad_betas.append({
+                    "version": match.group(1),
+                    "date": date_text,
+                    "link": link
+                })
 
-    
-    # Sort and pick the most recent beta (assuming first found is most recent)
-    if mac_betas:
-        latest_mac_beta, latest_mac_beta_date = mac_betas[-1]
-    if ipad_betas:
-        latest_ipad_beta, latest_ipad_beta_date = ipad_betas[-1]
+    latest_mac_beta = mac_betas[-1] if mac_betas else None
+    latest_ipad_beta = ipad_betas[-1] if ipad_betas else None
 
-    # Update latest values
-    latest_mac_beta, latest_mac_beta_date = mac_betas[-1]
-    latest_ipad_beta, latest_ipad_beta_date = ipad_betas[-1]
     return {
         "stable_mac": stable_mac,
         "stable_ipad": stable_ipad,
         "upcoming_mac": latest_mac_beta,
-        "upcoming_mac_date": latest_mac_beta_date,
-        "upcoming_ipad": latest_ipad_beta,
-        "upcoming_ipad_date": latest_ipad_beta_date,
+        "upcoming_ipad": latest_ipad_beta
     }
 
 def fetch_chrome_info():
-    # Stable release info
-    url = "https://developer.chrome.com/release-notes"
-    resp = requests.get(url)
+    """Fetch Chrome stable and beta info."""
+    stable_url = "https://developer.chrome.com/release-notes"
+    beta_url = "https://developer.chrome.com/blog/"
+
+    # Stable
+    resp = requests.get(stable_url)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, 'html.parser')
     text = soup.get_text()
-    m = re.search(r"Stable release date:\s*(.+)", text)
-    release_date = m.group(1).strip() if m else "30 September 2025"
-    version = "141"  # Manually updated or parsed if needed
-    return version, release_date
+    m = re.search(r"Chrome (\d+)", text)
+    stable_ver = m.group(1) if m else "Unknown"
+    m_date = re.search(r"Stable release date:\s*(\w+ \d{1,2}, \d{4})", text)
+    stable_date = m_date.group(1) if m_date else "Unknown"
 
-def fetch_chrome_beta_info():
-    # Search for the latest blog post with "BETA" in the title
-    url = "https://developer.chrome.com/blog/"
-    resp = requests.get(url)
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, 'html.parser')
-    text = soup.get_text()
+    # Beta
+    resp_b = requests.get(beta_url)
+    resp_b.raise_for_status()
+    soup_b = BeautifulSoup(resp_b.text, 'html.parser')
+    text_b = soup_b.get_text()
+    m_beta_ver = re.search(r"Chrome (\d+)\s+beta", text_b, re.IGNORECASE)
+    m_beta_date = re.search(r"Published:\s*(\w+ \d{1,2}, \d{4})", text_b)
+    beta_ver = m_beta_ver.group(1) if m_beta_ver else "Unknown"
+    beta_date = m_beta_date.group(1) if m_beta_date else "Unknown"
 
-    # Extract version and release date
-    m_ver = re.search(r"Chrome (\d+)\s+beta", text, re.IGNORECASE)
-    m_date = re.search(r"Published:\s*(\w+ \d{1,2}, \d{4})", text)
-    beta_version = m_ver.group(1) if m_ver else "138"
-    beta_date = m_date.group(1) if m_date else "28 May 2025"
-    return beta_version, beta_date
+    beta_link = None
+    for a in soup_b.find_all("a", href=True):
+        if "chrome-" in a["href"] and "beta" in a["href"]:
+            beta_link = "https://developer.chrome.com" + a["href"]
+            break
+
+    return {
+        "stable_version": stable_ver,
+        "stable_date": stable_date,
+        "beta_version": beta_ver,
+        "beta_date": beta_date,
+        "beta_link": beta_link or beta_url
+    }
 
 def fetch_windows_info():
+    """Fetch Windows 11 version and date."""
     url = "https://learn.microsoft.com/en-us/windows/release-health/"
-    try:
-        resp = requests.get(url)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        text = soup.get_text(separator="\n")
-        m = re.search(r"Windows 11, version\s*([0-9A-Za-z\-]+)", text)
-        version = m.group(1) if m else "25H2"
-        dm = re.search(r"(?:\d{1,2}\s+[A-Za-z]+\s+\d{4})", text)
-        date_text = dm.group(0) if dm else "30 September 2025"
-        return version, date_text
-    except Exception:
-        return "25H2", "30 September 2025"
+    resp = requests.get(url)
+    resp.raise_for_status()
+    text = resp.text
+    m = re.search(r"Windows 11, version\s*([0-9A-Za-z\-]+)", text)
+    version = m.group(1) if m else "Unknown"
+    dm = re.search(r"(\d{1,2}\s+[A-Za-z]+\s+\d{4})", text)
+    date_text = dm.group(1) if dm else "Unknown"
+    return {"version": version, "date": date_text, "link": url}
+
+# ---------- Comparison + CSV ----------
+
+def compare_with_previous_csv(new_rows, filename):
+    """Compare new CSV rows with existing CSV; mark ⚠️ for changed fields."""
+    if not os.path.exists(filename):
+        return new_rows  # First run
+    old_rows = []
+    with open(filename, newline='', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        next(reader, None)  # skip header
+        old_rows = list(reader)
+    highlighted = []
+    for i, row in enumerate(new_rows):
+        if i < len(old_rows):
+            old = old_rows[i]
+            new = [
+                (f"{new_cell} ⚠️" if old[j] != new_cell else new_cell)
+                for j, new_cell in enumerate(row)
+            ]
+            highlighted.append(new)
+        else:
+            highlighted.append([f"{c} ⚠️" for c in row])
+    return highlighted
 
 def main():
     os_data = []
 
-    # Apple data
+    # Apple
     apple = fetch_apple_releases()
-    stable_mac = apple.get("stable_mac") or "Unknown"
-    stable_ipad = apple.get("stable_ipad") or "Unknown"
-    up_mac = apple.get("upcoming_mac")
-    up_mac_date_raw = apple.get("upcoming_mac_date")
-    up_ipad = apple.get("upcoming_ipad")
-    up_ipad_date_raw = apple.get("upcoming_ipad_date")
-
-    # Format the date strings for CSV
-    up_mac_date = format_date(up_mac_date_raw)
-    up_ipad_date = format_date(up_ipad_date_raw)
+    mac_stable = apple["stable_mac"]
+    mac_beta = apple["upcoming_mac"]
+    ipad_stable = apple["stable_ipad"]
+    ipad_beta = apple["upcoming_ipad"]
 
     os_data.append([
         "MacBook",
-        f"macOS {stable_mac}",
-        f"macOS {up_mac}" if up_mac else None,
-        up_mac_date,
-        "https://developer.apple.com/news/releases/"
+        f"macOS {mac_stable['version']}" if mac_stable else "Unknown",
+        f"macOS {mac_beta['version']}" if mac_beta else None,
+        format_date(mac_beta["date"]) if mac_beta else "Unknown",
+        mac_beta["link"] if mac_beta else mac_stable["link"]
     ])
     os_data.append([
         "iPad",
-        f"iPadOS {stable_ipad}",
-        f"iPadOS {up_ipad}" if up_ipad else None,
-        up_ipad_date,
-        "https://developer.apple.com/news/releases/"
+        f"iPadOS {ipad_stable['version']}" if ipad_stable else "Unknown",
+        f"iPadOS {ipad_beta['version']}" if ipad_beta else None,
+        format_date(ipad_beta["date"]) if ipad_beta else "Unknown",
+        ipad_beta["link"] if ipad_beta else ipad_stable["link"]
     ])
 
-    # ChromeOS data
-    chrome_ver, chrome_date = fetch_chrome_info()
-    beta_ver, beta_date = fetch_chrome_beta_info()
-
+    # Chrome
+    chrome = fetch_chrome_info()
     os_data.append([
         "Chromebook",
-        f"Chrome {chrome_ver}",
-        None,
-        chrome_date,
-        "https://developer.chrome.com/release-notes"
-    ])
-    os_data.append([
-        "Chromebook (Beta)",
-        f"Chrome {beta_ver}",
-        None,
-        beta_date,
-        "https://developer.chrome.com/blog/chrome-138-beta"
+        f"Chrome {chrome['stable_version']}",
+        f"Chrome {chrome['beta_version']} Beta",
+        format_date(chrome["beta_date"]),
+        chrome["beta_link"]
     ])
 
-    # Windows data
-    win_ver, win_date = fetch_windows_info()
+    # Windows
+    win = fetch_windows_info()
     os_data.append([
         "Windows",
-        f"Windows 11, version {win_ver}",
+        f"Windows 11, version {win['version']}",
         None,
-        win_date,
-        "https://learn.microsoft.com/en-us/windows/release-health/"
+        format_date(win["date"]),
+        win["link"]
     ])
 
-    # Debugging - print data before writing to CSV
-    print("OS data to write:")
-    for row in os_data:
-        print(row)
+    # Save clean CSV
+    header = ["Device Type", "Current OS Version", "Upcoming OS Version",
+              "Upcoming Release Date", "Release Notes URL"]
 
-    if not os_data:
-        print("[Error] No data to write. Exiting.")
-        return  # Early exit if no data.
-
-    # Write to CSV
     with open('os_versions.csv', 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
-        writer.writerow([
-            "Device Type",
-            "Current OS Version",
-            "Upcoming OS Version",
-            "Upcoming Release Date",
-            "Release Notes URL"
-        ])
+        writer.writerow(header)
         writer.writerows(os_data)
 
-    print(f"[{date.today()}] CSV written as 'os_versions.csv'")
+    # Highlighted version
+    highlighted = compare_with_previous_csv(os_data, 'os_versions.csv')
+    with open('highlighted_os_versions.csv', 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        writer.writerows(highlighted)
+
+    print(f"[{date.today()}] CSVs written and compared.")
 
 if __name__ == "__main__":
     main()

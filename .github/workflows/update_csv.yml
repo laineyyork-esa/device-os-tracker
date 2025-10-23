@@ -32,7 +32,7 @@ jobs:
           git commit -m "Auto-update OS versions CSV" || echo "No changes to commit"
           git push
 
-      -      - name: Send email report
+      - name: Send email report
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: ${{ secrets.MAIL_SERVER }}

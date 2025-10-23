@@ -39,9 +39,9 @@ jobs:
           server_port: ${{ secrets.MAIL_PORT }}
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "Daily OS Release Report – ${{ github.run_id }}"
-          from: ${{ secrets.MAIL_FROM }}
-          to: ${{ secrets.MAIL_TO }}
+          subject: "Daily OS Release Report – $(date +'%d %b %Y')"
+          from: "${{ secrets.MAIL_FROM }}"
+          to: "${{ secrets.MAIL_TO }}"
           html_body: |
             <p>Hello 👋,</p>
             <p>Here are today's OS version updates (⚠️ = changed since last run):</p>
@@ -50,4 +50,5 @@ jobs:
             </pre>
             <p>Best,<br>GitHub Actions Bot</p>
           attachments: os_versions.csv
+
 

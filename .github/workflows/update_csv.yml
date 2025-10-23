@@ -19,15 +19,35 @@ jobs:
           python-version: '3.x'
 
       - name: Install dependencies
-        run: pip install requests beautifulsoup4 packaging
+        run: pip install requests beautifulsoup4
 
       - name: Run script
         run: python generate_os_versions.py
 
-      - name: Commit updated CSV
+      - name: Commit updated CSVs
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add os_versions.csv
+          git add os_versions.csv highlighted_os_versions.csv
           git commit -m "Auto-update OS versions CSV" || echo "No changes to commit"
           git push
+
+      - name: Send email report
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port: ${{ secrets.MAIL_PORT }}
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "Daily OS Release Report – ${{ github.run_date }}"
+          from: ${{ secrets.MAIL_FROM }}
+          to: ${{ secrets.MAIL_TO }}
+          content_type: text/html
+          body: |
+            <p>Hello 👋,</p>
+            <p>Here are today's OS version updates (⚠️ = changed since last run):</p>
+            <pre>
+            ${{ steps.csv_table.outputs.table }}
+            </pre>
+            <p>Best,<br>GitHub Actions Bot</p>
+          attachments: os_versions.csv

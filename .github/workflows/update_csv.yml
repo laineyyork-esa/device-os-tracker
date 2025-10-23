@@ -32,22 +32,22 @@ jobs:
           git commit -m "Auto-update OS versions CSV" || echo "No changes to commit"
           git push
 
-      - name: Send email report
+      -      - name: Send email report
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: ${{ secrets.MAIL_SERVER }}
           server_port: ${{ secrets.MAIL_PORT }}
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "Daily OS Release Report – ${{ github.run_date }}"
+          subject: "Daily OS Release Report – ${{ github.run_id }}"
           from: ${{ secrets.MAIL_FROM }}
           to: ${{ secrets.MAIL_TO }}
-          content_type: text/html
-          body: |
+          html_body: |
             <p>Hello 👋,</p>
             <p>Here are today's OS version updates (⚠️ = changed since last run):</p>
             <pre>
-            ${{ steps.csv_table.outputs.table }}
+            $(cat highlighted_os_versions.csv)
             </pre>
             <p>Best,<br>GitHub Actions Bot</p>
           attachments: os_versions.csv
+

@@ -96,45 +96,65 @@ def fetch_apple_releases():
     }
 
 def fetch_chrome_info():
-    stable_url = "https://developer.chrome.com/release-notes"
+    """
+    Fetch current stable and beta Chrome OS release information from developer.chrome.com
+    """
+    stable_url = "https://developer.chrome.com/release-notes/"
     beta_url = "https://developer.chrome.com/blog/"
 
-    # Stable
+    # Fetch Stable Info
     resp = requests.get(stable_url)
     resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, 'html.parser')
-    text = soup.get_text()
-    m_ver = re.search(r"Chrome\s+(\d+(\.\d+)*)", text)
-    stable_ver = m_ver.group(1) if m_ver else "Unknown"
-    m_date = re.search(r"Stable channel.*?(\w+ \d{1,2}, \d{4})", text, re.DOTALL)
-    stable_date = m_date.group(1) if m_date else "Unknown"
-    stable_link = stable_url
+    soup = BeautifulSoup(resp.text, "html.parser")
 
-    # Beta
+    # Find the first "release notes" link (usually the latest stable)
+    stable_link = None
+    stable_ver = None
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if re.search(r"/release-notes/\d+", href):
+            stable_link = "https://developer.chrome.com" + href
+            match = re.search(r"(\d+)", href)
+            if match:
+                stable_ver = match.group(1)
+            break
+
+    # Default fallback values
+    stable_ver = stable_ver or "Unknown"
+    stable_date = "Unknown"
+
+    # Fetch Beta Info
     resp_b = requests.get(beta_url)
     resp_b.raise_for_status()
-    soup_b = BeautifulSoup(resp_b.text, 'html.parser')
-    text_b = soup_b.get_text()
-    m_beta_ver = re.search(r"Chrome\s+(\d+(\.\d+)*)\s+beta", text_b, re.IGNORECASE)
-    beta_ver = m_beta_ver.group(1) if m_beta_ver else "Unknown"
-    m_beta_date = re.search(r"Published\s*:\s*(\w+ \d{1,2}, \d{4})", text_b)
-    beta_date = m_beta_date.group(1) if m_beta_date else "Unknown"
+    soup_b = BeautifulSoup(resp_b.text, "html.parser")
     beta_link = None
+    beta_ver = None
     for a in soup_b.find_all("a", href=True):
         href = a["href"]
-        if re.search(r"/blog/chrome-[\d]+-beta", href, re.IGNORECASE):
-            beta_link = href if href.startswith("http") else "https://developer.chrome.com" + href
+        if re.search(r"/blog/chrome-\d+-beta", href):
+            beta_link = "https://developer.chrome.com" + href
+            match = re.search(r"chrome-(\d+)-beta", href)
+            if match:
+                beta_ver = match.group(1)
             break
-    if not beta_link:
-        beta_link = beta_url
+
+    # Get published date from that beta article
+    beta_date = "Unknown"
+    if beta_link:
+        resp_beta = requests.get(beta_link)
+        resp_beta.raise_for_status()
+        soup_beta = BeautifulSoup(resp_beta.text, "html.parser")
+        time_tag = soup_beta.find("time")
+        if time_tag and time_tag.get("datetime"):
+            beta_date = format_date(time_tag["datetime"])
 
     return {
         "stable_version": stable_ver,
         "stable_date": stable_date,
-        "stable_link": stable_link,
-        "beta_version": beta_ver,
+        "stable_link": stable_link or stable_url,
+        "beta_version": beta_ver or "Unknown",
         "beta_date": beta_date,
-        "beta_link": beta_link
+        "beta_link": beta_link or beta_url,
     }
 
 def fetch_windows_info():

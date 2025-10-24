@@ -1,28 +1,33 @@
-name: Auto Update OS Versions
+name: Auto Update OS Versions (Debug)
 
 on:
-  schedule:
-    - cron: '0 0 * * *'  # Run daily at midnight UTC
   workflow_dispatch:
 
 jobs:
-  build:
+  debug:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.x'
 
-      - name: Install dependencies
-        run: pip install requests beautifulsoup4
+      - run: pip install requests beautifulsoup4
 
-      - name: Run script
-        run: python generate_os_versions.py
+      - name: Run script (with debug)
+        run: |
+          set -e
+          echo "Running scraper..."
+          python generate_os_versions.py || (echo "Python script failed" && exit 1)
+          echo "Files after run:"
+          ls -lh
+
+      - name: Show CSV preview
+        run: |
+          echo "=== os_versions.csv (first 20 lines) ==="
+          head -20 os_versions.csv || echo "No os_versions.csv found"
+          echo "=== highlighted_os_versions.csv (first 20 lines) ==="
+          head -20 highlighted_os_versions.csv || echo "No highlighted_os_versions.csv found"
 
       - name: Commit updated CSVs
         run: |

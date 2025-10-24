@@ -96,7 +96,6 @@ def fetch_apple_releases():
     }
 
 def fetch_chrome_info():
-    """Fetch Chrome stable and beta info."""
     stable_url = "https://developer.chrome.com/release-notes"
     beta_url = "https://developer.chrome.com/blog/"
 
@@ -105,33 +104,37 @@ def fetch_chrome_info():
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, 'html.parser')
     text = soup.get_text()
-    m = re.search(r"Chrome (\d+)", text)
-    stable_ver = m.group(1) if m else "Unknown"
-    m_date = re.search(r"Stable release date:\s*(\w+ \d{1,2}, \d{4})", text)
+    m_ver = re.search(r"Chrome\s+(\d+(\.\d+)*)", text)
+    stable_ver = m_ver.group(1) if m_ver else "Unknown"
+    m_date = re.search(r"Stable channel.*?(\w+ \d{1,2}, \d{4})", text, re.DOTALL)
     stable_date = m_date.group(1) if m_date else "Unknown"
+    stable_link = stable_url
 
     # Beta
     resp_b = requests.get(beta_url)
     resp_b.raise_for_status()
     soup_b = BeautifulSoup(resp_b.text, 'html.parser')
     text_b = soup_b.get_text()
-    m_beta_ver = re.search(r"Chrome (\d+)\s+beta", text_b, re.IGNORECASE)
-    m_beta_date = re.search(r"Published:\s*(\w+ \d{1,2}, \d{4})", text_b)
+    m_beta_ver = re.search(r"Chrome\s+(\d+(\.\d+)*)\s+beta", text_b, re.IGNORECASE)
     beta_ver = m_beta_ver.group(1) if m_beta_ver else "Unknown"
+    m_beta_date = re.search(r"Published\s*:\s*(\w+ \d{1,2}, \d{4})", text_b)
     beta_date = m_beta_date.group(1) if m_beta_date else "Unknown"
-
     beta_link = None
     for a in soup_b.find_all("a", href=True):
-        if "chrome-" in a["href"] and "beta" in a["href"]:
-            beta_link = "https://developer.chrome.com" + a["href"]
+        href = a["href"]
+        if re.search(r"/blog/chrome-[\d]+-beta", href, re.IGNORECASE):
+            beta_link = href if href.startswith("http") else "https://developer.chrome.com" + href
             break
+    if not beta_link:
+        beta_link = beta_url
 
     return {
         "stable_version": stable_ver,
         "stable_date": stable_date,
+        "stable_link": stable_link,
         "beta_version": beta_ver,
         "beta_date": beta_date,
-        "beta_link": beta_link or beta_url
+        "beta_link": beta_link
     }
 
 def fetch_windows_info():
